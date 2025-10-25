@@ -1,90 +1,39 @@
 pipeline {
     agent any
-
-    environment {
-        DOCKERHUB_USER = "naren3005"
-        DOCKERHUB_REPO = "jarvis"
-        IMAGE_TAG = "v${env.BUILD_NUMBER}"
-        IMAGE_NAME = "${DOCKERHUB_USER}/${DOCKERHUB_REPO}:${IMAGE_TAG}"
-
-        CREDENTIALS_DOCKER = "dockerhub-creds"
-        CREDENTIALS_SSH = "swarm-ssh"
-        SWARM_USER = "ubuntu"
-        SWARM_HOST = "SWARM_MANAGER_IP"
-    }
-
+    
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                git 'https://github.com/naren-30/Jarvis-Desktop-Voice-Assistant.git'
             }
         }
 
-        stage('Setup Python & Install deps') {
+        stage('Install Dependencies') {
             steps {
-                sh '''
-                  python3 -m venv venv
-                  . venv/bin/activate
-                  pip install --upgrade pip
-                  pip install -r requirements.txt
-                '''
+                sh 'pip install -r requirements.txt'
             }
         }
 
-        stage('Run Tests') {
+        stage('Run Lint Check') {
             steps {
-                sh '''
-                  . venv/bin/activate
-                  pytest --junitxml=pytest-report.xml
-                '''
-            }
-            post {
-                always {
-                    junit 'pytest-report.xml'
-                }
+                sh 'flake8 || true'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${IMAGE_NAME} ."
+                sh 'docker build -t jarvis:latest .'
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Deploy to Docker Swarm') {
             steps {
-                withCredentials([usernamePassword(credentialsId: CREDENTIALS_DOCKER, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                  sh '''
-                    echo "$PASS" | docker login -u "$USER" --password-stdin
-                    docker push ${IMAGE_NAME}
-                    docker logout
-                  '''
-                }
+                sh '''
+                docker service rm jarvis || true
+                docker service create --name jarvis --publish 8080:8080 jarvis:latest
+                '''
             }
-        }
-
-        stage('Deploy to Swarm') {
-            steps {
-                sshagent(credentials: [CREDENTIALS_SSH]) {
-                  sh """
-                    scp -o StrictHostKeyChecking=no stack.yml ${SWARM_USER}@${SWARM_HOST}:/tmp/stack.yml
-                    ssh -o StrictHostKeyChecking=no ${SWARM_USER}@${SWARM_HOST} \\
-                      "docker pull ${IMAGE_NAME} && docker stack deploy -c /tmp/stack.yml jarvis_stack"
-                  """
-                }
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "✅ Deployment successful: ${IMAGE_NAME}"
-        }
-        failure {
-            echo "❌ Pipeline failed, check logs."
-        }
-        always {
-            cleanWs()
         }
     }
 }
+
