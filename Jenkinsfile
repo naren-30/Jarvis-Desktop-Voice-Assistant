@@ -76,7 +76,7 @@ pipeline {
                         docker service create \
                             --name jarvis \
                             --with-registry-auth \
-                            --publish 8080:8080 \
+                            --publish 8009:8080 \
                             $IMAGE_NAME:$IMAGE_TAG
                     '''
                 }
