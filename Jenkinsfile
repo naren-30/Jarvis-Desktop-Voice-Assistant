@@ -2,75 +2,77 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USER = "naren3005"
-        DOCKERHUB_REPO = "jarvis"
-        IMAGE_TAG = "v${env.BUILD_NUMBER}"
-        IMAGE_NAME = "${DOCKERHUB_USER}/${DOCKERHUB_REPO}:${IMAGE_TAG}"
-
-        CREDENTIALS_DOCKER = "dockerhub-creds"
-        CREDENTIALS_SSH = "swarm-ssh"
-        SWARM_USER = "ubuntu"
-        SWARM_HOST = "SWARM_MANAGER_IP"
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub')
+        IMAGE_NAME = "naren3005/jarvis"
+        IMAGE_TAG = "v1"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Setup Python & Install deps') {
+        stage('Install Dependencies') {
             steps {
                 sh '''
-                  python3 -m venv venv
-                  . venv/bin/activate
-                  pip install --upgrade pip
-                  pip install -r requirements.txt
+                python3 -m venv venv
+                . venv/bin/activate
+                pip install --upgrade pip
+                pip install -r requirements.txt
+                '''
+            }
+        }
+
+        stage('Run Lint Check') {
+            steps {
+                sh '''
+                . venv/bin/activate
+                pip install flake8
+                flake8 || true
                 '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${IMAGE_NAME} ."
+                sh "docker build -t $IMAGE_NAME:$IMAGE_TAG ."
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: CREDENTIALS_DOCKER, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                  sh '''
-                    echo "$PASS" | docker login -u "$USER" --password-stdin
-                    docker push ${IMAGE_NAME}
-                    docker logout
-                  '''
-                }
+                sh '''
+                echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin
+                docker push $IMAGE_NAME:$IMAGE_TAG
+                '''
             }
         }
 
-        stage('Deploy to Swarm') {
+        stage('Deploy to Docker Swarm') {
             steps {
-                sshagent(credentials: [CREDENTIALS_SSH]) {
-                  sh """
-                    scp -o StrictHostKeyChecking=no stack.yml ${SWARM_USER}@${SWARM_HOST}:/tmp/stack.yml
-                    ssh -o StrictHostKeyChecking=no ${SWARM_USER}@${SWARM_HOST} \\
-                      "docker pull ${IMAGE_NAME} && docker stack deploy -c /tmp/stack.yml jarvis_stack"
-                  """
-                }
+                sh '''
+                docker login -u "$DOCKERHUB_CREDENTIALS_USR" -p "$DOCKERHUB_CREDENTIALS_PSW"
+                
+                docker service rm jarvis || true
+                docker service create \
+                    --name jarvis \
+                    --with-registry-auth \
+                    --publish 8080:8080 \
+                    $IMAGE_NAME:$IMAGE_TAG
+                '''
             }
         }
     }
 
     post {
         success {
-            echo "✅ Deployment successful: ${IMAGE_NAME}"
+            echo "🎉 Deployment Successful! Jarvis is ready to serve your commands!"
         }
         failure {
-            echo "❌ Pipeline failed, check logs."
-        }
-        always {
-            cleanWs()
+            echo "💥 Deployment Failed! Jarvis is sleeping on the job..."
         }
     }
 }
