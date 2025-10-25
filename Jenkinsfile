@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub') // DockerHub username + token
         IMAGE_NAME = "naren3005/jarvis"
         IMAGE_TAG = "v1"
     }
@@ -52,31 +51,35 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 echo "🚀 Pushing Docker image to DockerHub..."
-                sh '''
-                    set -x
-                    echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin
-                    docker push $IMAGE_NAME:$IMAGE_TAG
-                '''
+                withCredentials([usernamePassword(credentialsId: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        set -x
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                    '''
+                }
             }
         }
 
         stage('Deploy to Docker Swarm') {
             steps {
                 echo "⚙️ Deploying Docker service to Swarm..."
-                sh '''
-                    set -x
-                    docker login -u "$DOCKERHUB_CREDENTIALS_USR" -p "$DOCKERHUB_CREDENTIALS_PSW"
-                    
-                    # Remove existing service if it exists
-                    docker service rm jarvis || true
+                withCredentials([usernamePassword(credentialsId: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        set -x
+                        docker login -u "$DOCKER_USER" -p "$DOCKER_PASS"
+                        
+                        # Remove existing service if it exists
+                        docker service rm jarvis || true
 
-                    # Deploy new service
-                    docker service create \
-                        --name jarvis \
-                        --with-registry-auth \
-                        --publish 8080:8080 \
-                        $IMAGE_NAME:$IMAGE_TAG
-                '''
+                        # Deploy new service
+                        docker service create \
+                            --name jarvis \
+                            --with-registry-auth \
+                            --publish 8080:8080 \
+                            $IMAGE_NAME:$IMAGE_TAG
+                    '''
+                }
             }
         }
     }
