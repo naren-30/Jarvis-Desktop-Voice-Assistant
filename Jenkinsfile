@@ -56,7 +56,7 @@ pipeline {
                 sh '''
                     docker swarm init || true
                     docker service rm jarvis || true
-                    docker service create --name jarvis -p 8070:8070 -replica 3 $DOCKER_IMAGE
+                    docker service create --name jarvis -p 8070:8070 --replicas 3 $DOCKER_IMAGE
                 '''
             }
         }
