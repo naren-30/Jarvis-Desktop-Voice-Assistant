@@ -3,7 +3,9 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "naren3005/jarvis:v1"
-        DOCKER_CREDENTIALS = "docker"     // Jenkins credentials ID for DockerHub
+        DOCKER_CREDENTIALS = "docker"   // Jenkins credentials ID for DockerHub
+        CONTAINER_NAME = "jarvis"
+        APP_PORT = "8070"
     }
 
     stages {
@@ -40,7 +42,7 @@ pipeline {
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Push Docker Image to DockerHub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
@@ -51,12 +53,14 @@ pipeline {
             }
         }
 
-        stage('Deploy to Docker Swarm') {
+        stage('Run Docker Container') {
             steps {
                 sh '''
-                    docker swarm init || true
-                    docker service rm jarvis || true
-                    docker service create --name jarvis -p 8070:8070 --replicas 3 $DOCKER_IMAGE
+                    echo "🧹 Cleaning up old container if it exists..."
+                    docker rm -f $CONTAINER_NAME || true
+
+                    echo "🚀 Running new container..."
+                    docker run -d --name $CONTAINER_NAME -p $APP_PORT:$APP_PORT $DOCKER_IMAGE
                 '''
             }
         }
@@ -68,7 +72,7 @@ pipeline {
             cleanWs()
         }
         success {
-            echo "✅ Build and deployment successful!"
+            echo "✅ Jarvis container is running on port ${APP_PORT}!"
         }
         failure {
             echo "❌ Build failed. Check logs for details!"
