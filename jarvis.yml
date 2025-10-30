@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  jarvis:
+    image: ${IMAGE_NAME}
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    # If your app needs access to audio devices on the host:
+    devices:
+      - /dev/snd:/dev/snd
+    # If you want to map a host port:
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      # Add any runtime env vars here
+    volumes:
+      - jarvis_data:/app/data
+
+volumes:
+  jarvis_data:
+    driver: local
