@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  jarvis:
+    image: naren3005/jarvis:v1
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    ports:
+      - "8080:8080"
